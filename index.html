@@ -355,7 +355,7 @@ let viewMatrix = defaultViewMatrix;
 straightenCamera();
 // Rotate initial view 20° to the right
 let _inv = invert4(viewMatrix);
-_inv = rotate4(_inv, 20 * Math.PI / 180, 0, 1, 0);
+_inv = rotate4(_inv, 40 * Math.PI / 180, 0, 1, 0);
 viewMatrix = invert4(_inv);
 straightenCamera();
 
