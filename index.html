@@ -123,7 +123,11 @@ function translate4(a, x, y, z) {
     ];
 }
 
-// Keep camera horizontal: remove roll and constrain pitch
+// Scene tilt correction: the COLMAP scene's "up" is tilted from (0,1,0)
+const TILT = -62 * Math.PI / 180;
+const wux = Math.sin(TILT), wuy = Math.cos(TILT), wuz = 0;
+
+// Keep camera horizontal: remove roll and constrain pitch relative to tilted up
 function straightenCamera() {
     let inv = invert4(viewMatrix);
     let px = inv[12], py = inv[13], pz = inv[14];
@@ -131,30 +135,35 @@ function straightenCamera() {
     // Forward = negative of back row (row 2 of view matrix)
     let fx = -viewMatrix[2], fy = -viewMatrix[6], fz = -viewMatrix[10];
 
-    // Decompose into yaw + pitch, clamp pitch to ±40°
-    let fxz = Math.hypot(fx, fz);
-    if (fxz < 0.001) fxz = 0.001;
-    let pitch = Math.atan2(fy, fxz);
+    // Project forward along world up to get pitch component
+    let fDotUp = fx*wux + fy*wuy + fz*wuz;
+
+    // Horizon component = forward minus up-projection
+    let hx = fx - fDotUp*wux, hy = fy - fDotUp*wuy, hz = fz - fDotUp*wuz;
+    let hLen = Math.hypot(hx, hy, hz);
+    if (hLen < 0.001) hLen = 0.001;
+
+    // Pitch relative to tilted horizon, clamped to ±40°
+    let pitch = Math.atan2(fDotUp, hLen);
     pitch = Math.max(-0.7, Math.min(0.7, pitch));
 
-    let fxn = fx / fxz, fzn = fz / fxz;
     let cp = Math.cos(pitch), sp = Math.sin(pitch);
+    let hxn = hx/hLen, hyn = hy/hLen, hzn = hz/hLen;
 
-    // Reconstructed forward with clamped pitch, no roll
-    let nfx = fxn * cp, nfy = sp, nfz = fzn * cp;
+    // Reconstructed forward from horizon direction + clamped pitch
+    let nfx = hxn*cp + wux*sp;
+    let nfy = hyn*cp + wuy*sp;
+    let nfz = hzn*cp + wuz*sp;
 
-    // World up rotated 20° around Z axis to correct scene tilt
-    const TILT = -62 * Math.PI / 180;
-    const wux = Math.sin(TILT), wuy = Math.cos(TILT), wuz = 0;
     // Right = cross(forward, worldUp)
     let nrx = nfy*wuz - nfz*wuy, nry = nfz*wux - nfx*wuz, nrz = nfx*wuy - nfy*wux;
     let nrl = Math.hypot(nrx, nry, nrz);
     nrx /= nrl; nry /= nrl; nrz /= nrl;
 
     // Up = cross(right, forward)
-    let nux = nry * nfz - nrz * nfy;
-    let nuy = nrz * nfx - nrx * nfz;
-    let nuz = nrx * nfy - nry * nfx;
+    let nux = nry*nfz - nrz*nfy;
+    let nuy = nrz*nfx - nrx*nfz;
+    let nuz = nrx*nfy - nry*nfx;
     let nul = Math.hypot(nux, nuy, nuz);
     nux /= nul; nuy /= nul; nuz /= nul;
 
