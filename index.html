@@ -347,37 +347,16 @@ void main () {
     fragColor = vec4(B * vColor.rgb, B);
 }`;
 
-// Ground plane shaders
-const groundVS = `#version 300 es
-precision highp float;
-uniform mat4 u_viewProj;
-in vec3 a_pos;
-out vec3 v_worldPos;
-void main() {
-    v_worldPos = a_pos;
-    gl_Position = u_viewProj * vec4(a_pos, 1.0);
-}`;
-
-const groundFS = `#version 300 es
-precision highp float;
-in vec3 v_worldPos;
-out vec4 fragColor;
-void main() {
-    vec2 coord = v_worldPos.xz;
-    vec2 grid = abs(fract(coord * 0.5) - 0.5);
-    float line = min(grid.x, grid.y);
-    float gridVal = 1.0 - smoothstep(0.0, 0.04, line);
-    float dist = length(coord);
-    float fade = 1.0 - smoothstep(8.0, 25.0, dist);
-    vec3 color = mix(vec3(0.06), vec3(0.18), gridVal);
-    fragColor = vec4(color, fade);
-}`;
-
 // View matrix from COLMAP camera DSC03417 (wide shot of garage)
 let defaultViewMatrix = [
     0.1943, -0.0326, 0.9804, 0.0, 0.4092, 0.9111, -0.0508, 0.0, -0.8915, 0.411, 0.1904, 0.0, -0.7918, 0.0923, 3.7035, 1.0
 ];
 let viewMatrix = defaultViewMatrix;
+straightenCamera();
+// Rotate initial view 20° to the right
+let _inv = invert4(viewMatrix);
+_inv = rotate4(_inv, 20 * Math.PI / 180, 0, 1, 0);
+viewMatrix = invert4(_inv);
 straightenCamera();
 
 async function main() {
@@ -453,36 +432,6 @@ async function main() {
     gl.vertexAttribIPointer(a_index, 1, gl.INT, false, 0, 0);
     gl.vertexAttribDivisor(a_index, 1);
 
-    gl.bindVertexArray(null);
-
-    // Ground plane setup
-    const gvs = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(gvs, groundVS); gl.compileShader(gvs);
-    const gfs = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(gfs, groundFS); gl.compileShader(gfs);
-    const groundProg = gl.createProgram();
-    gl.attachShader(groundProg, gvs); gl.attachShader(groundProg, gfs);
-    gl.linkProgram(groundProg);
-    const u_groundVP = gl.getUniformLocation(groundProg, "u_viewProj");
-
-    const FLOOR_Y = -8.0;
-    const S = 30;
-    // Rotate floor 40° to the right (around Y axis)
-    const ang = 40 * Math.PI / 180;
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    const rv = (x, z) => [x*ca - z*sa, z*ca + x*sa]; // rotated XZ
-    const [ax,az] = rv(-S,-S), [bx,bz] = rv(S,-S), [cx,cz] = rv(S,S), [dx,dz] = rv(-S,S);
-    const groundVAO = gl.createVertexArray();
-    gl.bindVertexArray(groundVAO);
-    const groundVBO = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, groundVBO);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-        ax,FLOOR_Y,az, bx,FLOOR_Y,bz, cx,FLOOR_Y,cz,
-        ax,FLOOR_Y,az, cx,FLOOR_Y,cz, dx,FLOOR_Y,dz
-    ]), gl.STATIC_DRAW);
-    const a_gpos = gl.getAttribLocation(groundProg, "a_pos");
-    gl.enableVertexAttribArray(a_gpos);
-    gl.vertexAttribPointer(a_gpos, 3, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
 
     const resize = () => {
@@ -632,27 +581,11 @@ async function main() {
         const currentFps = 1000 / (now - lastFrame) || 0;
         avgFps = avgFps * 0.9 + currentFps * 0.1;
 
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        // Draw ground plane first
-        gl.useProgram(groundProg);
-        gl.bindVertexArray(groundVAO);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.uniformMatrix4fv(u_groundVP, false, viewProj);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
         if (vertexCount > 0) {
             document.getElementById("spinner").style.display = "none";
-            // Draw splats on top
-            gl.useProgram(program);
             gl.bindVertexArray(splatVAO);
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA, gl.ONE, gl.ONE_MINUS_DST_ALPHA, gl.ONE);
-            gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
             gl.uniformMatrix4fv(u_view, false, viewMatrix);
-            gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
+            gl.clear(gl.COLOR_BUFFER_BIT);
             gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, vertexCount);
         } else {
             document.getElementById("spinner").style.display = "";
