@@ -465,15 +465,20 @@ async function main() {
     gl.linkProgram(groundProg);
     const u_groundVP = gl.getUniformLocation(groundProg, "u_viewProj");
 
-    const FLOOR_Y = -1.0;
+    const FLOOR_Y = -3.0;
     const S = 30;
+    // Rotate floor 20° to the left (around Y axis)
+    const ang = -20 * Math.PI / 180;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const rv = (x, z) => [x*ca - z*sa, z*ca + x*sa]; // rotated XZ
+    const [ax,az] = rv(-S,-S), [bx,bz] = rv(S,-S), [cx,cz] = rv(S,S), [dx,dz] = rv(-S,S);
     const groundVAO = gl.createVertexArray();
     gl.bindVertexArray(groundVAO);
     const groundVBO = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, groundVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-        -S,FLOOR_Y,-S, S,FLOOR_Y,-S, S,FLOOR_Y,S,
-        -S,FLOOR_Y,-S, S,FLOOR_Y,S, -S,FLOOR_Y,S
+        ax,FLOOR_Y,az, bx,FLOOR_Y,bz, cx,FLOOR_Y,cz,
+        ax,FLOOR_Y,az, cx,FLOOR_Y,cz, dx,FLOOR_Y,dz
     ]), gl.STATIC_DRAW);
     const a_gpos = gl.getAttribLocation(groundProg, "a_pos");
     gl.enableVertexAttribArray(a_gpos);
