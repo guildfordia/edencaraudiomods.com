@@ -465,10 +465,10 @@ async function main() {
     gl.linkProgram(groundProg);
     const u_groundVP = gl.getUniformLocation(groundProg, "u_viewProj");
 
-    const FLOOR_Y = -3.0;
+    const FLOOR_Y = -8.0;
     const S = 30;
-    // Rotate floor 20° to the left (around Y axis)
-    const ang = -20 * Math.PI / 180;
+    // Rotate floor 40° to the right (around Y axis)
+    const ang = 40 * Math.PI / 180;
     const ca = Math.cos(ang), sa = Math.sin(ang);
     const rv = (x, z) => [x*ca - z*sa, z*ca + x*sa]; // rotated XZ
     const [ax,az] = rv(-S,-S), [bx,bz] = rv(S,-S), [cx,cz] = rv(S,S), [dx,dz] = rv(-S,S);
