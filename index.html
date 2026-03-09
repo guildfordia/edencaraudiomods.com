@@ -124,7 +124,7 @@ function translate4(a, x, y, z) {
 }
 
 // Scene tilt correction: the COLMAP scene's "up" is tilted from (0,1,0)
-const TILT = -62 * Math.PI / 180;
+const TILT = 0;
 const wux = Math.sin(TILT), wuy = Math.cos(TILT), wuz = 0;
 
 // Keep camera horizontal: remove roll and constrain pitch relative to tilted up
