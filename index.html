@@ -143,10 +143,13 @@ function straightenCamera() {
     // Reconstructed forward with clamped pitch, no roll
     let nfx = fxn * cp, nfy = sp, nfz = fzn * cp;
 
-    // Right = cross(forward, worldUp) where worldUp = (0,1,0)
-    let nrx = -nfz, nry = 0, nrz = nfx;
-    let nrl = Math.hypot(nrx, nrz);
-    nrx /= nrl; nrz /= nrl;
+    // World up rotated 20° around Z axis to correct scene tilt
+    const TILT = 20 * Math.PI / 180;
+    const wux = Math.sin(TILT), wuy = Math.cos(TILT), wuz = 0;
+    // Right = cross(forward, worldUp)
+    let nrx = nfy*wuz - nfz*wuy, nry = nfz*wux - nfx*wuz, nrz = nfx*wuy - nfy*wux;
+    let nrl = Math.hypot(nrx, nry, nrz);
+    nrx /= nrl; nry /= nrl; nrz /= nrl;
 
     // Up = cross(right, forward)
     let nux = nry * nfz - nrz * nfy;
@@ -352,11 +355,6 @@ let defaultViewMatrix = [
     0.1943, -0.0326, 0.9804, 0.0, 0.4092, 0.9111, -0.0508, 0.0, -0.8915, 0.411, 0.1904, 0.0, -0.7918, 0.0923, 3.7035, 1.0
 ];
 let viewMatrix = defaultViewMatrix;
-straightenCamera();
-// Rotate initial view 20° to the right
-let _inv = invert4(viewMatrix);
-_inv = rotate4(_inv, 40 * Math.PI / 180, 0, 1, 0);
-viewMatrix = invert4(_inv);
 straightenCamera();
 
 async function main() {
