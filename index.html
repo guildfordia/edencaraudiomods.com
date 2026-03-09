@@ -144,7 +144,7 @@ function straightenCamera() {
     let nfx = fxn * cp, nfy = sp, nfz = fzn * cp;
 
     // World up rotated 20° around Z axis to correct scene tilt
-    const TILT = -40 * Math.PI / 180;
+    const TILT = -60 * Math.PI / 180;
     const wux = Math.sin(TILT), wuy = Math.cos(TILT), wuz = 0;
     // Right = cross(forward, worldUp)
     let nrx = nfy*wuz - nfz*wuy, nry = nfz*wux - nfx*wuz, nrz = nfx*wuy - nfy*wux;
