@@ -12,7 +12,8 @@ canvas { display: block; width: 100vw; height: 100vh; }
   position: fixed; bottom: 16px; left: 16px; color: #fff;
   font-size: 13px; opacity: 0.7; z-index: 10; pointer-events: none;
 }
-#fps { position: fixed; top: 12px; right: 16px; color: #fff; font-size: 12px; opacity: 0.5; z-index: 10; }
+#fps { position: fixed; top: 12px; right: 16px; color: #fff; font-size: 12px; opacity: 0.5; z-index: 10; display: none; }
+#fps.revealed { display: block; }
 #spinner {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
   color: #fff; font-size: 18px; z-index: 20; text-align: center;
@@ -27,6 +28,18 @@ canvas { display: block; width: 100vw; height: 100vh; }
 }
 #message { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #f44; font-size: 16px; z-index: 40; }
 #camid { display: none; }
+#timewarp {
+  position: fixed; top: 12px; left: 16px; z-index: 10;
+  color: #fff; font-size: 12px; opacity: 0.5; font-family: system-ui, sans-serif;
+  display: none;
+}
+#timewarp.revealed { display: block; }
+#timewarp select {
+  background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.3);
+  font-size: 12px; padding: 2px 4px; border-radius: 3px; cursor: pointer;
+  font-family: system-ui, sans-serif;
+}
+#timewarp select option { background: #000; }
 </style>
 </head>
 <body>
@@ -41,6 +54,17 @@ canvas { display: block; width: 100vw; height: 100vh; }
 </div>
 <div id="progress" style="width: 0%"></div>
 <div id="message"></div>
+<div id="timewarp">
+  <select id="timeoffset">
+    <option value="0">now</option>
+    <option value="300">+ 5 min</option>
+    <option value="1800">+ 30 min</option>
+    <option value="3600">+ 1 hour</option>
+    <option value="21600">+ 6 hours</option>
+    <option value="43200">+ 12 hours</option>
+    <option value="86400">+ 24 hours</option>
+  </select>
+</div>
 <div id="camid"></div>
 
 <script>
@@ -125,7 +149,7 @@ function translate4(a, x, y, z) {
 
 // Scene tilt correction: the COLMAP scene's "up" is tilted from (0,1,0)
 // World up computed from average camera orientations (accounts for projection Y-flip)
-const wux = 0.014, wuy = 0.934, wuz = 0.356;
+const wux = 0.060, wuy = 0.934, wuz = 0.060;
 
 // Keep camera horizontal: remove roll and constrain pitch relative to tilted up
 function straightenCamera() {
@@ -312,13 +336,24 @@ uniform highp usampler2D u_texture;
 uniform mat4 projection, view;
 uniform vec2 focal;
 uniform vec2 viewport;
+uniform float u_time;
+uniform float u_audio;
 in vec2 position;
 in int index;
 out vec4 vColor;
 out vec2 vPosition;
 void main () {
     uvec4 cen = texelFetch(u_texture, ivec2((uint(index) & 0x3ffu) << 1, uint(index) >> 10), 0);
-    vec4 cam = view * vec4(uintBitsToFloat(cen.xyz), 1);
+    vec3 worldPos = uintBitsToFloat(cen.xyz);
+    // Entropy: displacement grows with time — imperceptible at first, ruins the scene over hours
+    float seed = worldPos.x * 13.7 + worldPos.y * 7.3 + worldPos.z * 23.1;
+    float decay = log(1.0 + u_time * 0.00005) * 0.15;
+    // Audio reactivity: mic level amplifies displacement
+    float audioBoost = 1.0 + u_audio * 8.0;
+    worldPos.x += sin(u_time * 0.7 + seed) * decay * audioBoost;
+    worldPos.y += sin(u_time * 0.5 + seed * 1.3) * decay * 0.7 * audioBoost;
+    worldPos.z += sin(u_time * 0.6 + seed * 0.9) * decay * 0.5 * audioBoost;
+    vec4 cam = view * vec4(worldPos, 1);
     vec4 pos2d = projection * cam;
     float clip = 1.2 * pos2d.w;
     if (pos2d.z < -clip || pos2d.x < -clip || pos2d.x > clip || pos2d.y < -clip || pos2d.y > clip) {
@@ -368,14 +403,14 @@ straightenCamera();
 
 // ===== FPS Camera system with explicit yaw/pitch =====
 let _inv0 = invert4(viewMatrix);
-let camPos = [_inv0[12], _inv0[13], _inv0[14]];
+let camPos = [-0.356, -5.251, -6.997];
 let _fwd0 = [-viewMatrix[2], -viewMatrix[6], -viewMatrix[10]];
 let _fDotUp = _fwd0[0]*wux + _fwd0[1]*wuy + _fwd0[2]*wuz;
 let _h0 = [_fwd0[0] - _fDotUp*wux, _fwd0[1] - _fDotUp*wuy, _fwd0[2] - _fDotUp*wuz];
 let _h0Len = Math.hypot(_h0[0], _h0[1], _h0[2]);
 let refFwd = [_h0[0]/_h0Len, _h0[1]/_h0Len, _h0[2]/_h0Len];
-let camYaw = 0;
-let camPitch = Math.atan2(_fDotUp, _h0Len);
+let camYaw = -1.246;
+let camPitch = -0.714;
 
 function getHorizonFwd() {
     let cy = Math.cos(camYaw), sy = Math.sin(camYaw);
@@ -482,6 +517,23 @@ async function main() {
     const u_viewport = gl.getUniformLocation(program, "viewport");
     const u_focal = gl.getUniformLocation(program, "focal");
     const u_view = gl.getUniformLocation(program, "view");
+    const u_time = gl.getUniformLocation(program, "u_time");
+    const u_audio = gl.getUniformLocation(program, "u_audio");
+    const startTime = performance.now();
+
+    // Mic input
+    let audioLevel = 0;
+    let analyser, audioData;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        source.connect(analyser);
+        audioData = new Uint8Array(analyser.frequencyBinCount);
+    } catch(e) { console.log('No mic access'); }
 
     // Splat VAO
     const splatVAO = gl.createVertexArray();
@@ -540,10 +592,27 @@ async function main() {
         }
     };
 
+    // 666 cheat code
+    let cheatBuf = '', cheatTimer = 0;
+    window.addEventListener("keypress", (e) => {
+        const now = performance.now();
+        if (now - cheatTimer > 600) cheatBuf = '';
+        cheatBuf += e.key;
+        cheatTimer = now;
+        if (cheatBuf.includes('666')) {
+            document.getElementById("timewarp").classList.toggle('revealed');
+            document.getElementById("fps").classList.toggle('revealed');
+            cheatBuf = '';
+        }
+    });
+
     // Controls
     let activeKeys = [];
     window.addEventListener("keydown", (e) => { carousel = false; if (!activeKeys.includes(e.code)) activeKeys.push(e.code); });
-    window.addEventListener("keyup", (e) => { activeKeys = activeKeys.filter(k => k !== e.code); });
+    window.addEventListener("keyup", (e) => {
+        activeKeys = activeKeys.filter(k => k !== e.code);
+        if (e.code === 'KeyP') console.log('CAM:', JSON.stringify({pos: camPos, yaw: camYaw, pitch: camPitch}));
+    });
     window.addEventListener("blur", () => { activeKeys = []; });
 
     // ===== CONTROLS =====
@@ -671,7 +740,18 @@ async function main() {
         }
         buildViewFromYawPitch();
 
-        const viewProj = multiply4(projectionMatrix, viewMatrix);
+        // Camera breathing — slow, never-repeating drift
+        const timeOffset = parseFloat(document.getElementById("timeoffset").value) || 0;
+        const t = (now - startTime) / 1000 + timeOffset;
+        const breathX = Math.sin(t * 0.13) * 0.070 + Math.sin(t * 0.071) * 0.036;
+        const breathY = Math.sin(t * 0.11) * 0.050 + Math.sin(t * 0.089) * 0.024;
+        const breathZ = Math.sin(t * 0.097) * 0.036;
+        let breathView = [...viewMatrix];
+        breathView[12] += breathX;
+        breathView[13] += breathY;
+        breathView[14] += breathZ;
+
+        const viewProj = multiply4(projectionMatrix, breathView);
         worker.postMessage({ view: viewProj });
 
         const currentFps = 1000 / (now - lastFrame) || 0;
@@ -680,7 +760,15 @@ async function main() {
         if (vertexCount > 0) {
             document.getElementById("spinner").style.display = "none";
             gl.bindVertexArray(splatVAO);
-            gl.uniformMatrix4fv(u_view, false, viewMatrix);
+            if (analyser) {
+                analyser.getByteFrequencyData(audioData);
+                let sum = 0;
+                for (let i = 0; i < audioData.length; i++) sum += audioData[i];
+                audioLevel = audioLevel * 0.7 + (sum / audioData.length / 255) * 0.3;
+            }
+            gl.uniform1f(u_time, t);
+            gl.uniform1f(u_audio, audioLevel);
+            gl.uniformMatrix4fv(u_view, false, breathView);
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, vertexCount);
         } else {
