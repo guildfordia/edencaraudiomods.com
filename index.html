@@ -422,8 +422,8 @@ let _fDotUp = _fwd0[0]*wux + _fwd0[1]*wuy + _fwd0[2]*wuz;
 let _h0 = [_fwd0[0] - _fDotUp*wux, _fwd0[1] - _fDotUp*wuy, _fwd0[2] - _fDotUp*wuz];
 let _h0Len = Math.hypot(_h0[0], _h0[1], _h0[2]);
 let refFwd = [_h0[0]/_h0Len, _h0[1]/_h0Len, _h0[2]/_h0Len];
-let camYaw = -1.1;
-let camPitch = -0.714;
+let camYaw = -1.235183850036047;
+let camPitch = -0.681707212055974;
 
 function getHorizonFwd() {
     let cy = Math.cos(camYaw), sy = Math.sin(camYaw);
@@ -494,7 +494,7 @@ async function main() {
     const contentLength = parseInt(req.headers.get("content-length")) || 0;
     let splatData = new Uint8Array(contentLength || 1024*1024);
 
-    const downsample = (contentLength / rowLength > 500000) ? 1 : 1 / devicePixelRatio;
+    const downsample = 1;
 
     const worker = new Worker(URL.createObjectURL(new Blob(["(", createWorker.toString(), ")(self)"], { type: "application/javascript" })));
 
