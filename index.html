@@ -660,7 +660,7 @@ async function main() {
     canvas.addEventListener("mousedown", (e) => {
         e.preventDefault(); startX=e.clientX; startY=e.clientY;
         if (e.button === 1 || (e.button === 0 && (e.ctrlKey || e.metaKey))) down = 3; // middle or ctrl+left = orbit
-        else if (e.button === 2 || e.button === 0 && e.shiftKey) down = 2; // right or shift+left = pan
+        else if (e.button === 2 || (e.button === 0 && e.shiftKey)) down = 2; // right or shift+left = pan
         else down = 1; // left = look
     });
     canvas.addEventListener("contextmenu", (e) => { e.preventDefault(); startX=e.clientX; startY=e.clientY; down=2; });
@@ -802,15 +802,17 @@ async function main() {
             start = Date.now() + 2000;
         }
 
-        const progress = (100 * vertexCount) / (splatData.length / rowLength);
-        if (progress < 100) document.getElementById("progress").style.width = progress + "%";
-        else document.getElementById("progress").style.display = "none";
+        if (vertexCount > 0 && bytesRead >= contentLength && contentLength > 0) {
+            document.getElementById("progress").style.display = "none";
+        } else if (contentLength > 0) {
+            document.getElementById("progress").style.width = (100 * bytesRead / contentLength) + "%";
+        }
 
         fps.innerText = Math.round(avgFps) + " fps";
         lastFrame = now;
         requestAnimationFrame(frame);
     };
-    frame();
+    requestAnimationFrame(frame);
 
     // Stream load
     const reader = req.body.getReader();
