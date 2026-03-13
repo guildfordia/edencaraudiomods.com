@@ -27,7 +27,6 @@ canvas { display: block; width: 100vw; height: 100vh; }
   background: #4af; z-index: 30; transition: width 0.3s;
 }
 #message { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #f44; font-size: 16px; z-index: 40; }
-#camid { display: none; }
 #mic-btn {
   position: fixed; bottom: 16px; right: 16px; z-index: 10;
   background: none; border: none; cursor: pointer; padding: 0;
@@ -78,8 +77,6 @@ canvas { display: block; width: 100vw; height: 100vh; }
 <button id="mic-btn" title="Enable microphone">
   <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
 </button>
-<div id="camid"></div>
-
 <script>
 // Adapted from antimatter15/splat (MIT License)
 // https://github.com/antimatter15/splat
@@ -133,30 +130,6 @@ function invert4(a) {
         (a[12]*b04-a[13]*b02+a[15]*b00)/det, (a[9]*b02-a[8]*b04-a[11]*b00)/det,
         (a[5]*b07-a[4]*b09-a[6]*b06)/det, (a[0]*b09-a[1]*b07+a[2]*b06)/det,
         (a[13]*b01-a[12]*b03-a[14]*b00)/det, (a[8]*b03-a[9]*b01+a[10]*b00)/det
-    ];
-}
-
-function rotate4(a, rad, x, y, z) {
-    let len=Math.hypot(x,y,z); x/=len; y/=len; z/=len;
-    let s=Math.sin(rad), c=Math.cos(rad), t=1-c;
-    let b00=x*x*t+c, b01=y*x*t+z*s, b02=z*x*t-y*s;
-    let b10=x*y*t-z*s, b11=y*y*t+c, b12=z*y*t+x*s;
-    let b20=x*z*t+y*s, b21=y*z*t-x*s, b22=z*z*t+c;
-    return [
-        a[0]*b00+a[4]*b01+a[8]*b02, a[1]*b00+a[5]*b01+a[9]*b02,
-        a[2]*b00+a[6]*b01+a[10]*b02, a[3]*b00+a[7]*b01+a[11]*b02,
-        a[0]*b10+a[4]*b11+a[8]*b12, a[1]*b10+a[5]*b11+a[9]*b12,
-        a[2]*b10+a[6]*b11+a[10]*b12, a[3]*b10+a[7]*b11+a[11]*b12,
-        a[0]*b20+a[4]*b21+a[8]*b22, a[1]*b20+a[5]*b21+a[9]*b22,
-        a[2]*b20+a[6]*b21+a[10]*b22, a[3]*b20+a[7]*b21+a[11]*b22,
-        ...a.slice(12,16)
-    ];
-}
-
-function translate4(a, x, y, z) {
-    return [...a.slice(0,12),
-        a[0]*x+a[4]*y+a[8]*z+a[12], a[1]*x+a[5]*y+a[9]*z+a[13],
-        a[2]*x+a[6]*y+a[10]*z+a[14], a[3]*x+a[7]*y+a[11]*z+a[15]
     ];
 }
 
@@ -407,21 +380,22 @@ void main () {
     fragColor = vec4(B * vColor.rgb, B);
 }`;
 
-// View matrix from COLMAP camera DSC03417 (wide shot of garage)
-let defaultViewMatrix = [
+// View matrix from COLMAP camera DSC03417 (wide shot of garage), straightened
+let viewMatrix = [
     0.1943, -0.0326, 0.9804, 0.0, 0.4092, 0.9111, -0.0508, 0.0, -0.8915, 0.411, 0.1904, 0.0, -0.7918, 0.0923, 3.7035, 1.0
 ];
-let viewMatrix = defaultViewMatrix;
 straightenCamera();
 
 // ===== FPS Camera system with explicit yaw/pitch =====
-let _inv0 = invert4(viewMatrix);
+// Derive reference forward (horizon-projected forward from straightened camera)
 let camPos = [-0.356, -5.251, -6.997];
-let _fwd0 = [-viewMatrix[2], -viewMatrix[6], -viewMatrix[10]];
-let _fDotUp = _fwd0[0]*wux + _fwd0[1]*wuy + _fwd0[2]*wuz;
-let _h0 = [_fwd0[0] - _fDotUp*wux, _fwd0[1] - _fDotUp*wuy, _fwd0[2] - _fDotUp*wuz];
-let _h0Len = Math.hypot(_h0[0], _h0[1], _h0[2]);
-let refFwd = [_h0[0]/_h0Len, _h0[1]/_h0Len, _h0[2]/_h0Len];
+const refFwd = (() => {
+    let fx = -viewMatrix[2], fy = -viewMatrix[6], fz = -viewMatrix[10];
+    let d = fx*wux + fy*wuy + fz*wuz;
+    let hx = fx - d*wux, hy = fy - d*wuy, hz = fz - d*wuz;
+    let l = Math.hypot(hx, hy, hz);
+    return [hx/l, hy/l, hz/l];
+})();
 let camYaw = -1.235183850036047;
 let camPitch = -0.681707212055974;
 
@@ -468,7 +442,6 @@ buildViewFromYawPitch();
 
 let loadError = false;
 async function main() {
-    let carousel = false;
     try {
         viewMatrix = JSON.parse(decodeURIComponent(location.hash.slice(1)));
         let inv = invert4(viewMatrix);
@@ -493,8 +466,6 @@ async function main() {
     const rowLength = 3*4 + 3*4 + 4 + 4;
     const contentLength = parseInt(req.headers.get("content-length")) || 0;
     let splatData = new Uint8Array(contentLength || 1024*1024);
-
-    const downsample = 1;
 
     const worker = new Worker(URL.createObjectURL(new Blob(["(", createWorker.toString(), ")(self)"], { type: "application/javascript" })));
 
@@ -524,6 +495,8 @@ async function main() {
     gl.linkProgram(program);
     gl.useProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(program));
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
 
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
@@ -595,8 +568,8 @@ async function main() {
         gl.uniform2fv(u_focal, new Float32Array([camera.fx, camera.fy]));
         projectionMatrix = getProjectionMatrix(camera.fx, camera.fy, innerWidth, innerHeight);
         gl.uniform2fv(u_viewport, new Float32Array([innerWidth, innerHeight]));
-        gl.canvas.width = Math.round(innerWidth / downsample);
-        gl.canvas.height = Math.round(innerHeight / downsample);
+        gl.canvas.width = innerWidth;
+        gl.canvas.height = innerHeight;
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
         gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
     };
@@ -638,13 +611,13 @@ async function main() {
     });
 
     // Controls
-    let activeKeys = [];
-    window.addEventListener("keydown", (e) => { carousel = false; if (!activeKeys.includes(e.code)) activeKeys.push(e.code); });
+    const activeKeys = new Set();
+    window.addEventListener("keydown", (e) => { activeKeys.add(e.code); });
     window.addEventListener("keyup", (e) => {
-        activeKeys = activeKeys.filter(k => k !== e.code);
+        activeKeys.delete(e.code);
         if (e.code === 'KeyP') console.log('CAM:', JSON.stringify({pos: camPos, yaw: camYaw, pitch: camPitch}));
     });
-    window.addEventListener("blur", () => { activeKeys = []; });
+    window.addEventListener("blur", () => { activeKeys.clear(); });
 
     // ===== CONTROLS =====
     // Left drag = look around (FPS style, rotate in place)
@@ -744,27 +717,28 @@ async function main() {
 
     // Render loop
     let lastFrame=0, avgFps=0, loadingDone=false;
+    const breathView = new Float32Array(16);
 
     const frame = (now) => {
-        let shiftKey = activeKeys.includes("ShiftLeft") || activeKeys.includes("ShiftRight");
+        let shiftKey = activeKeys.has("ShiftLeft") || activeKeys.has("ShiftRight");
         let moveSpeed = 0.08;
         let rotSpeed = 0.02;
         let d = getCamDirs();
-        if (activeKeys.includes("ArrowUp") || activeKeys.includes("KeyW")) {
+        if (activeKeys.has("ArrowUp") || activeKeys.has("KeyW")) {
             camPos[0] -= d.fwd[0]*moveSpeed; camPos[1] -= d.fwd[1]*moveSpeed; camPos[2] -= d.fwd[2]*moveSpeed;
         }
-        if (activeKeys.includes("ArrowDown") || activeKeys.includes("KeyS")) {
+        if (activeKeys.has("ArrowDown") || activeKeys.has("KeyS")) {
             camPos[0] += d.fwd[0]*moveSpeed; camPos[1] += d.fwd[1]*moveSpeed; camPos[2] += d.fwd[2]*moveSpeed;
         }
-        if (activeKeys.includes("KeyA")) {
+        if (activeKeys.has("KeyA")) {
             camPos[0] -= d.right[0]*moveSpeed; camPos[1] -= d.right[1]*moveSpeed; camPos[2] -= d.right[2]*moveSpeed;
         }
-        if (activeKeys.includes("KeyD")) {
+        if (activeKeys.has("KeyD")) {
             camPos[0] += d.right[0]*moveSpeed; camPos[1] += d.right[1]*moveSpeed; camPos[2] += d.right[2]*moveSpeed;
         }
-        if (activeKeys.includes("ArrowLeft")) camYaw -= rotSpeed;
-        if (activeKeys.includes("ArrowRight")) camYaw += rotSpeed;
-        if (activeKeys.includes("Space")) {
+        if (activeKeys.has("ArrowLeft")) camYaw -= rotSpeed;
+        if (activeKeys.has("ArrowRight")) camYaw += rotSpeed;
+        if (activeKeys.has("Space")) {
             camPos[0] += wux*moveSpeed; camPos[1] += wuy*moveSpeed; camPos[2] += wuz*moveSpeed;
         }
         if (shiftKey) {
@@ -778,7 +752,7 @@ async function main() {
         const breathX = Math.sin(t * 0.13) * 0.070 + Math.sin(t * 0.071) * 0.036;
         const breathY = Math.sin(t * 0.11) * 0.050 + Math.sin(t * 0.089) * 0.024;
         const breathZ = Math.sin(t * 0.097) * 0.036;
-        let breathView = [...viewMatrix];
+        for (let i = 0; i < 16; i++) breathView[i] = viewMatrix[i];
         breathView[12] += breathX;
         breathView[13] += breathY;
         breathView[14] += breathZ;
