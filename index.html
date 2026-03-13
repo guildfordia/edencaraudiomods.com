@@ -500,6 +500,9 @@ async function main() {
 
     const canvas = document.getElementById("canvas");
     const fps = document.getElementById("fps");
+    const spinnerEl = document.getElementById("spinner");
+    const progressEl = document.getElementById("progress");
+    const timeoffsetEl = document.getElementById("timeoffset");
 
     let projectionMatrix;
     const gl = canvas.getContext("webgl2", { antialias: false });
@@ -740,7 +743,7 @@ async function main() {
     canvas.addEventListener("touchend", (e) => { e.preventDefault(); down=false; }, {passive:false});
 
     // Render loop
-    let lastFrame=0, avgFps=0, start=Date.now();
+    let lastFrame=0, avgFps=0, loadingDone=false;
 
     const frame = (now) => {
         let shiftKey = activeKeys.includes("ShiftLeft") || activeKeys.includes("ShiftRight");
@@ -770,7 +773,7 @@ async function main() {
         buildViewFromYawPitch();
 
         // Camera breathing — slow, never-repeating drift
-        const timeOffset = parseFloat(document.getElementById("timeoffset").value) || 0;
+        const timeOffset = parseFloat(timeoffsetEl.value) || 0;
         const t = (now - startTime) / 1000 + timeOffset;
         const breathX = Math.sin(t * 0.13) * 0.070 + Math.sin(t * 0.071) * 0.036;
         const breathY = Math.sin(t * 0.11) * 0.050 + Math.sin(t * 0.089) * 0.024;
@@ -787,7 +790,7 @@ async function main() {
         avgFps = avgFps * 0.9 + currentFps * 0.1;
 
         if (vertexCount > 0) {
-            document.getElementById("spinner").style.display = "none";
+            spinnerEl.style.display = "none";
             gl.bindVertexArray(splatVAO);
             if (analyser) {
                 analyser.getByteFrequencyData(audioData);
@@ -801,14 +804,13 @@ async function main() {
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, vertexCount);
         } else if (!loadError) {
-            document.getElementById("spinner").style.display = "";
-            start = Date.now() + 2000;
+            spinnerEl.style.display = "";
         }
 
-        if (vertexCount > 0 && bytesRead >= contentLength && contentLength > 0) {
-            document.getElementById("progress").style.display = "none";
+        if (loadingDone) {
+            progressEl.style.display = "none";
         } else if (contentLength > 0) {
-            document.getElementById("progress").style.width = (100 * bytesRead / contentLength) + "%";
+            progressEl.style.width = Math.min(100, 100 * bytesRead / contentLength) + "%";
         }
 
         fps.innerText = Math.round(avgFps) + " fps";
@@ -837,10 +839,11 @@ async function main() {
         }
     }
     worker.postMessage({ buffer: splatData.buffer, vertexCount: Math.floor(bytesRead / rowLength) });
+    loadingDone = true;
 }
 
 main().catch(err => {
-    document.getElementById("spinner").style.display = "none";
+    const sp = document.getElementById("spinner"); if (sp) sp.style.display = "none";
     document.getElementById("message").innerText = err.toString();
     loadError = true;
 });
