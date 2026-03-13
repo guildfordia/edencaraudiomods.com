@@ -250,7 +250,7 @@ function createWorker(self) {
 
     function generateTexture() {
         if (!buffer) return;
-        const f_buffer = new Float32Array(buffer);
+        const f_buffer = new Float32Array(buffer, 0, vertexCount * 8);
         const u_buffer = new Uint8Array(buffer);
         var texwidth = 1024 * 2;
         var texheight = Math.ceil((2 * vertexCount) / texwidth);
@@ -291,7 +291,7 @@ function createWorker(self) {
 
     function runSort(viewProj) {
         if (!buffer) return;
-        const f_buffer = new Float32Array(buffer);
+        const f_buffer = new Float32Array(buffer, 0, vertexCount * 8);
         if (lastVertexCount == vertexCount) {
             let dot = lastProj[2]*viewProj[2] + lastProj[6]*viewProj[6] + lastProj[10]*viewProj[10];
             if (Math.abs(dot - 1) < 0.01) return;
