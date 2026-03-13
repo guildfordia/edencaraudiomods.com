@@ -32,7 +32,9 @@ canvas { display: block; width: 100vw; height: 100vh; }
   position: fixed; bottom: 16px; right: 16px; z-index: 10;
   background: none; border: none; cursor: pointer; padding: 0;
   opacity: 0.3; transition: opacity 0.3s;
+  display: none;
 }
+#mic-btn.revealed { display: block; }
 #mic-btn:hover { opacity: 0.6; }
 #mic-btn.active { opacity: 0.8; }
 #mic-btn svg { width: 20px; height: 20px; fill: #fff; }
@@ -359,11 +361,11 @@ void main () {
     // Entropy: displacement grows with time — imperceptible at first, ruins the scene over hours
     float seed = worldPos.x * 13.7 + worldPos.y * 7.3 + worldPos.z * 23.1;
     float decay = log(1.0 + u_time * 0.00005) * 0.15;
-    // Audio reactivity: mic level amplifies displacement
-    float audioBoost = 1.0 + u_audio * 8.0;
-    worldPos.x += sin(u_time * 0.7 + seed) * decay * audioBoost;
-    worldPos.y += sin(u_time * 0.5 + seed * 1.3) * decay * 0.7 * audioBoost;
-    worldPos.z += sin(u_time * 0.6 + seed * 0.9) * decay * 0.5 * audioBoost;
+    // Audio reactivity: mic level drives its own displacement, independent of decay
+    float audioDisp = u_audio * 0.35;
+    worldPos.x += sin(u_time * 0.7 + seed) * (decay + audioDisp);
+    worldPos.y += sin(u_time * 0.5 + seed * 1.3) * (decay + audioDisp) * 0.7;
+    worldPos.z += sin(u_time * 0.6 + seed * 0.9) * (decay + audioDisp) * 0.5;
     vec4 cam = view * vec4(worldPos, 1);
     vec4 pos2d = projection * cam;
     float clip = 1.2 * pos2d.w;
@@ -464,6 +466,7 @@ function buildViewFromYawPitch() {
 
 buildViewFromYawPitch();
 
+let loadError = false;
 async function main() {
     let carousel = false;
     try {
@@ -532,15 +535,22 @@ async function main() {
     const u_audio = gl.getUniformLocation(program, "u_audio");
     const startTime = performance.now();
 
-    // Mic input — activated by button
+    // Mic input — activated by button, toggleable
     let audioLevel = 0;
-    let analyser, audioData;
+    let analyser, audioData, micStream;
     document.getElementById('mic-btn').addEventListener('click', async () => {
-        if (analyser) return;
+        if (analyser) {
+            // Toggle off: stop mic and disconnect
+            micStream.getTracks().forEach(t => t.stop());
+            analyser = null; audioData = null; micStream = null;
+            audioLevel = 0;
+            document.getElementById('mic-btn').classList.remove('active');
+            return;
+        }
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const audioCtx = new AudioContext();
-            const source = audioCtx.createMediaStreamSource(stream);
+            const source = audioCtx.createMediaStreamSource(micStream);
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
             analyser.smoothingTimeConstant = 0.8;
@@ -617,6 +627,7 @@ async function main() {
         if (cheatBuf.includes('666')) {
             document.getElementById("timewarp").classList.toggle('revealed');
             document.getElementById("fps").classList.toggle('revealed');
+            document.getElementById("mic-btn").classList.toggle('revealed');
             cheatBuf = '';
         }
     });
@@ -786,7 +797,7 @@ async function main() {
             gl.uniformMatrix4fv(u_view, false, breathView);
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, vertexCount);
-        } else {
+        } else if (!loadError) {
             document.getElementById("spinner").style.display = "";
             start = Date.now() + 2000;
         }
@@ -826,6 +837,7 @@ async function main() {
 main().catch(err => {
     document.getElementById("spinner").style.display = "none";
     document.getElementById("message").innerText = err.toString();
+    loadError = true;
 });
 </script>
 </body>
